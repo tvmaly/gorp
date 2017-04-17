@@ -235,10 +235,8 @@ func rawselect(m *DbMap, exec SqlExecutor, i interface{}, query string,
 		var err2 error
 		if t, err2 = toSliceType(i); t == nil {
 			if err2 != nil {
-				fmt.Println("ERROR line 238")
 				return nil, err2
 			}
-			fmt.Println("ERROR line 241")
 			return nil, err
 		}
 		pointerElements = t.Kind() == reflect.Ptr
@@ -259,7 +257,6 @@ func rawselect(m *DbMap, exec SqlExecutor, i interface{}, query string,
 	// Run the query
 	rows, err := exec.Query(query, args...)
 	if err != nil {
-		fmt.Println("ERROR line 263")
 		return nil, err
 	}
 	defer rows.Close()
@@ -267,12 +264,10 @@ func rawselect(m *DbMap, exec SqlExecutor, i interface{}, query string,
 	// Fetch the column names as returned from db
 	cols, err := rows.Columns()
 	if err != nil {
-		fmt.Println("ERROR line 271")
 		return nil, err
 	}
 
 	if !intoStruct && len(cols) > 1 {
-		fmt.Println("ERROR line 276")
 		return nil, fmt.Errorf("gorp: select into non-struct slice requires 1 column, got %d", len(cols))
 	}
 
@@ -282,7 +277,6 @@ func rawselect(m *DbMap, exec SqlExecutor, i interface{}, query string,
 		colToFieldIndex, err = columnToFieldIndex(m, t, tableName, cols)
 		if err != nil {
 			if !NonFatalError(err) {
-				fmt.Println("ERROR line 286")
 				return nil, err
 			}
 			nonFatalErr = err
@@ -301,7 +295,6 @@ func rawselect(m *DbMap, exec SqlExecutor, i interface{}, query string,
 		if !rows.Next() {
 			// if error occured return rawselect
 			if rows.Err() != nil {
-				fmt.Println("ERROR line 305")
 				return nil, rows.Err()
 			}
 			// time to exit from outer "for" loop
@@ -319,8 +312,13 @@ func rawselect(m *DbMap, exec SqlExecutor, i interface{}, query string,
 
 		for x := range cols {
 			f := v.Elem()
+			fmt.Printf("x: %v\n", x)
+			fmt.Printf("f: %v\n", f)
+
 			if intoStruct {
 				index := colToFieldIndex[x]
+				fmt.Printf("index: %v\n", index)
+
 				if index == nil {
 					// this field is not present in the struct, so create a dummy
 					// value for rows.Scan to scan into
@@ -328,10 +326,13 @@ func rawselect(m *DbMap, exec SqlExecutor, i interface{}, query string,
 					dest[x] = &dummy
 					continue
 				}
+				fmt.Printf("FieldByIndex: %v\n", f.FieldByIndex(index))
 				f = f.FieldByIndex(index)
 			}
 			target := f.Addr().Interface()
+			fmt.Printf("target: %v\n", target)
 			if conv != nil {
+				fmt.Println("conv is not nil")
 				scanner, ok := conv.FromDb(target)
 				if ok {
 					target = scanner.Holder
@@ -341,16 +342,17 @@ func rawselect(m *DbMap, exec SqlExecutor, i interface{}, query string,
 			dest[x] = target
 		}
 
+		fmt.Printf("dest:\n%v\n", dest)
+
 		err = rows.Scan(dest...)
 		if err != nil {
-			fmt.Println("ERROR line 347")
+			fmt.Println("TODO figure this error out nil to string")
 			return nil, err
 		}
 
 		for _, c := range custScan {
 			err = c.Bind()
 			if err != nil {
-				fmt.Println("ERROR line 353")
 				return nil, err
 			}
 		}
@@ -369,10 +371,5 @@ func rawselect(m *DbMap, exec SqlExecutor, i interface{}, query string,
 		sliceValue.Set(reflect.MakeSlice(sliceValue.Type(), 0, 0))
 	}
 
-	if nonFatalErr == nil {
-		fmt.Println("NO ERROR in rawselect")
-	} else {
-		fmt.Println("ERROR line 377")
-	}
 	return list, nonFatalErr
 }
