@@ -235,8 +235,10 @@ func rawselect(m *DbMap, exec SqlExecutor, i interface{}, query string,
 		var err2 error
 		if t, err2 = toSliceType(i); t == nil {
 			if err2 != nil {
+				fmt.Println("ERROR line 238")
 				return nil, err2
 			}
+			fmt.Println("ERROR line 241")
 			return nil, err
 		}
 		pointerElements = t.Kind() == reflect.Ptr
@@ -257,6 +259,7 @@ func rawselect(m *DbMap, exec SqlExecutor, i interface{}, query string,
 	// Run the query
 	rows, err := exec.Query(query, args...)
 	if err != nil {
+		fmt.Println("ERROR line 263")
 		return nil, err
 	}
 	defer rows.Close()
@@ -264,18 +267,22 @@ func rawselect(m *DbMap, exec SqlExecutor, i interface{}, query string,
 	// Fetch the column names as returned from db
 	cols, err := rows.Columns()
 	if err != nil {
+		fmt.Println("ERROR line 271")
 		return nil, err
 	}
 
 	if !intoStruct && len(cols) > 1 {
+		fmt.Println("ERROR line 276")
 		return nil, fmt.Errorf("gorp: select into non-struct slice requires 1 column, got %d", len(cols))
 	}
 
+	// TODO figure out how to translate driver.Value type <nil> into type *string
 	var colToFieldIndex [][]int
 	if intoStruct {
 		colToFieldIndex, err = columnToFieldIndex(m, t, tableName, cols)
 		if err != nil {
 			if !NonFatalError(err) {
+				fmt.Println("ERROR line 286")
 				return nil, err
 			}
 			nonFatalErr = err
@@ -294,6 +301,7 @@ func rawselect(m *DbMap, exec SqlExecutor, i interface{}, query string,
 		if !rows.Next() {
 			// if error occured return rawselect
 			if rows.Err() != nil {
+				fmt.Println("ERROR line 305")
 				return nil, rows.Err()
 			}
 			// time to exit from outer "for" loop
@@ -335,12 +343,14 @@ func rawselect(m *DbMap, exec SqlExecutor, i interface{}, query string,
 
 		err = rows.Scan(dest...)
 		if err != nil {
+			fmt.Println("ERROR line 347")
 			return nil, err
 		}
 
 		for _, c := range custScan {
 			err = c.Bind()
 			if err != nil {
+				fmt.Println("ERROR line 353")
 				return nil, err
 			}
 		}
@@ -359,5 +369,10 @@ func rawselect(m *DbMap, exec SqlExecutor, i interface{}, query string,
 		sliceValue.Set(reflect.MakeSlice(sliceValue.Type(), 0, 0))
 	}
 
+	if nonFatalErr == nil {
+		fmt.Println("NO ERROR in rawselect")
+	} else {
+		fmt.Println("ERROR line 377")
+	}
 	return list, nonFatalErr
 }
