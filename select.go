@@ -190,8 +190,15 @@ func hookedselect(m *DbMap, exec SqlExecutor, i interface{}, query string,
 
 	// Determine where the results are: written to i, or returned in list
 	if t, _ := toSliceType(i); t == nil {
+
+		fmt.Printf("DEBUG: toSliceType is nil for type: %T : %v \n", i, i)
+
 		for _, v := range list {
+
+			fmt.Printf("RESULT RANGE %T : %v\n", v, v)
+
 			if v, ok := v.(HasPostGet); ok {
+				fmt.Printf("HasPostGet %v\n", ok)
 				err := v.PostGet(exec)
 				if err != nil {
 					return nil, err
@@ -199,6 +206,9 @@ func hookedselect(m *DbMap, exec SqlExecutor, i interface{}, query string,
 			}
 		}
 	} else {
+
+		fmt.Println("DEBUG: toSliceType is slice SLICE VALUE")
+
 		resultsValue := reflect.Indirect(reflect.ValueOf(i))
 		for i := 0; i < resultsValue.Len(); i++ {
 			if v, ok := resultsValue.Index(i).Interface().(HasPostGet); ok {
@@ -229,6 +239,8 @@ func rawselect(m *DbMap, exec SqlExecutor, i interface{}, query string,
 		tableName = dynObj.TableName()
 	}
 
+	fmt.Printf("QUERY1: %s\n", query)
+
 	// get type for i, verifying it's a supported destination
 	t, err := toType(i)
 	if err != nil {
@@ -253,6 +265,8 @@ func rawselect(m *DbMap, exec SqlExecutor, i interface{}, query string,
 	if len(args) == 1 {
 		query, args = maybeExpandNamedQuery(m, query, args)
 	}
+
+	fmt.Printf("QUERY2: %s\n", query)
 
 	// Run the query
 	rows, err := exec.Query(query, args...)
@@ -308,16 +322,17 @@ func rawselect(m *DbMap, exec SqlExecutor, i interface{}, query string,
 
 		dest := make([]interface{}, len(cols))
 
+		finaldest := make([]interface{}, len(cols))
+
+		imps := make([]string, len(cols))
+
 		custScan := make([]CustomScanner, 0)
 
 		for x := range cols {
 			f := v.Elem()
-			fmt.Printf("x: %v\n", x)
-			fmt.Printf("f: %v\n", f)
 
 			if intoStruct {
 				index := colToFieldIndex[x]
-				fmt.Printf("index: %v\n", index)
 
 				if index == nil {
 					// this field is not present in the struct, so create a dummy
@@ -326,20 +341,50 @@ func rawselect(m *DbMap, exec SqlExecutor, i interface{}, query string,
 					dest[x] = &dummy
 					continue
 				}
-				fmt.Printf("FieldByIndex: %v\n", f.FieldByIndex(index))
 				f = f.FieldByIndex(index)
 			}
 			target := f.Addr().Interface()
-			fmt.Printf("target: %v\n", target)
+
+			//tname := reflect.TypeOf(target).String()
+			//fmt.Printf("reflect.TypeOf(target).String() is %s\n", tname)
+
+			// TODO see https://blog.golang.org/laws-of-reflection
 			if conv != nil {
-				fmt.Println("conv is not nil")
 				scanner, ok := conv.FromDb(target)
 				if ok {
 					target = scanner.Holder
 					custScan = append(custScan, scanner)
 				}
 			}
-			dest[x] = target
+
+			strtype := reflect.TypeOf(target).String()
+
+			switch {
+
+			case strtype == "*string":
+				dest[x] = &sql.NullString{}
+				imps[x] = "string"
+				fmt.Printf("%v : %s\n", x, strtype)
+			case strtype == "*int64":
+				dest[x] = &sql.NullInt64{}
+				imps[x] = "int64"
+				fmt.Printf("%v : %s\n", x, strtype)
+			case strtype == "*float64":
+				dest[x] = &sql.NullFloat64{}
+				imps[x] = "float64"
+				fmt.Printf("%v : %s\n", x, strtype)
+			case strtype == "*bool":
+				dest[x] = &sql.NullBool{}
+				imps[x] = "bool"
+				fmt.Printf("%v : %s\n", x, strtype)
+			default:
+				dest[x] = target
+				imps[x] = ""
+				fmt.Printf("%v : %s\n", x, strtype)
+			}
+
+			// dest[x] = target
+			finaldest[x] = target
 		}
 
 		fmt.Printf("dest:\n%v\n", dest)
@@ -354,6 +399,27 @@ func rawselect(m *DbMap, exec SqlExecutor, i interface{}, query string,
 			err = c.Bind()
 			if err != nil {
 				return nil, err
+			}
+		}
+
+		// see https://golang.org/src/database/sql/convert.go  convertAssign
+		for ri, _ := range dest {
+
+			if imps[ri] != "" {
+
+				switch {
+				case imps[ri] == "string":
+
+				}
+				if dest[ri].Valid {
+					*finaldest[x], _ = dest[ri].Value()
+				}
+
+			} else {
+
+				if dest[ri] != nil {
+					*finaldest[ri] = *dest[ri]
+				}
 			}
 		}
 
